@@ -145,8 +145,8 @@ class Cell:
         if self.walls[3] == True:
             pyg.graphics.draw_indexed(2,pyg.gl.GL_LINE_STRIP,[0,1],('v2i',(215 + self.cellH*self.pos[1] - self.cellH//2, 785 - self.cellH*self.pos[0] - self.cellH//2, 215 + self.cellH*self.pos[1] - self.cellH//2, 785 - self.cellH*self.pos[0] + self.cellH//2)))
 
-maze = Maze(height = 25, width = 25)
-Maze.genMaze(grid = maze.grid, start = [0,0], end = [24,24])
+maze = Maze(height = 20, width = 30)
+Maze.genMaze(grid = maze.grid, start = [0,0], end = [19,29])
 window = pyg.window.Window(width = 1200, height = 1000)
 label = pyg.text.Label('Maze Gen Alpha',font_name = 'Times New Roman', font_size = 36, x = window.width//2, y = 19*window.height//20, anchor_x = 'center', anchor_y = 'center')
 buttonLabel = pyg.text.Label('Maze',font_size = 16, x = 100, y = 925, anchor_x = 'center', anchor_y = 'center')
@@ -163,7 +163,7 @@ def on_draw():
 def on_mouse_press(x, y, button, modifiers):
     if x > 0 and x < 200 and y > 850 and y < 1000 and button == pyg.window.mouse.LEFT:
         maze.genGrid(height = len(maze.grid), width = len(maze.grid[0]))
-        Maze.genMaze(grid = maze.grid, start = [0,0], end = [24,24])
+        Maze.genMaze(grid = maze.grid, start = [0,0], end = [19,29])
 
 #Main
 pyg.app.run()
