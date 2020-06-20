@@ -170,8 +170,6 @@ vp.sphere(pos = vp.vector(0,0,0),radius = 0.1, color = vp.vector(1,1,1)) #Origin
 vp.sphere(pos = vp.vector(0,5,7),radius = 0.2, color = vp.vector(1,0,0)) #start
 vp.sphere(pos = vp.vector(6,0,0),radius = 0.2, color = vp.vector(0,0,1)) #end
 
-vp.scene.forward = vp.vector(0,-1,0)
-vp.scene.camera.pos = vp.vector(0.5,4.5,6.5)
 
 quadArray = [] #walls will be added here
 for i in range(len(maze.grid)):
@@ -202,15 +200,36 @@ for i in range(len(maze.grid)):
             if maze.grid[i][j][k].walls[5]:
                 quadArray.append(vp.quad(vs = [DFL,DFR,DBR,DBL]))
 
-print(vp.scene.camera.axis)
-print(vp.scene.camera.pos)
-print(vp.scene.forward)
-#Camera ocntrol
+#scene.forward = vp.vector(0,-1,0)
+#scene.camera.pos = vp.vector(0.5,5.5,6.5)
+scene.forward = vp.vector(0,-1,0)
+scene.camera.pos = vp.vector(0.5,6.5,6.5)
+scene.camera.axis = vp.vector(0,-1,0)
+scene.up = vp.vector(0,0,-1)
+
 
 while True:
-    vp.rate(30)
+    vp.rate(5)
     k = vp.keysdown()
     if 'w' in k:
-        vp.scene.forward.mag = 0.25
-        vp.scene.camera.pos += vp.scene.forward
-    
+        scene.camera.pos += scene.forward
+    if 's' in k:
+        scene.camera.pos -= scene.forward
+    if 'up' in k:
+        temp = vp.vector(scene.forward.x,scene.forward.y,scene.forward.z)
+        scene.forward = scene.up
+        scene.camera.axis.mag = 1
+        scene.up = -1*temp
+    if 'down' in k:
+        temp = vp.vector(scene.forward.x,scene.forward.y,scene.forward.z)
+        scene.forward = -1*scene.up
+        scene.camera.axis.mag = 1
+        scene.up = temp
+    if 'right' in k:   
+        temp = vp.vector(scene.forward.x,scene.forward.y,scene.forward.z)
+        scene.forward = -1*vp.vector.cross(scene.up,temp)
+        scene.camera.axis.mag = 1
+    if 'left' in k:
+        temp = vp.vector(scene.forward.x,scene.forward.y,scene.forward.z)
+        scene.forward = vp.vector.cross(scene.up,temp)
+        scene.camera.axis.mag = 1
