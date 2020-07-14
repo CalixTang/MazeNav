@@ -1,5 +1,18 @@
 import pyglet as pyg
 import random
+from math import *
+
+#a generic makeCircle modified for use here.
+def makeCircle(numPoints, radius, pos, color):
+    verts = []
+    colors = []
+    for i in range(numPoints):
+        angle = radians(float(i)/numPoints * 360.0)
+        x = radius*cos(angle) + pos[0]
+        y = radius*sin(angle) + pos[1]
+        verts += [x,y]
+        colors += color
+    return pyg.graphics.vertex_list(numPoints, ('v2f', verts), ('c3B', colors))
 
 class Maze:
     
@@ -13,7 +26,13 @@ class Maze:
         self.grid[0][0].walls[0] = False #entrance
         self.grid[-1][-1].walls[2] = False #exit
 
-
+    def getCellFromPos(self,pos,radius):
+        for row in self.grid:
+            for cell in row:
+                if cell.contains(pos,radius):
+                    return cell
+        return None 
+    
     def draw(self):
         for i in range(self.height):
             for j in range(self.width):
@@ -145,11 +164,29 @@ class Cell:
         if self.walls[3] == True:
             pyg.graphics.draw_indexed(2,pyg.gl.GL_LINE_STRIP,[0,1],('v2i',(215 + self.cellH*self.pos[1] - self.cellH//2, 785 - self.cellH*self.pos[0] - self.cellH//2, 215 + self.cellH*self.pos[1] - self.cellH//2, 785 - self.cellH*self.pos[0] + self.cellH//2)))
 
+    #contains tells us whether a ball with given radius will fit, given the position of the ball.
+    def contains(self,pos,radius):
+        #print([abs(215 + self.cellH*self.pos[1] - pos[0]), abs(785 - self.cellH*self.pos[0] - pos[1])])
+        if abs(215 + self.cellH*self.pos[1] - pos[0]) <= self.cellH - radius and abs(785 - self.cellH*self.pos[0] - pos[1]) <= self.cellH - radius:
+            return True
+        else:
+            return False
+
+#Ball: player controlled
+class Ball:
+    def __init__(self, radius, pos):
+        self.radius = radius
+        self.pos = pos
+        
+    def draw(self):
+        makeCircle(100,self.radius,self.pos,color=(255,0,0)).draw(pyg.gl.GL_LINE_LOOP)
+
 maze = Maze(height = 20, width = 30)
 Maze.genMaze(grid = maze.grid, start = [0,0], end = [19,29])
 window = pyg.window.Window(width = 1200, height = 1000)
 label = pyg.text.Label('Maze Gen Alpha',font_name = 'Times New Roman', font_size = 36, x = window.width//2, y = 19*window.height//20, anchor_x = 'center', anchor_y = 'center')
 buttonLabel = pyg.text.Label('Maze',font_size = 16, x = 100, y = 925, anchor_x = 'center', anchor_y = 'center')
+ball = Ball(6,[215,785])
 
 @window.event
 def on_draw():
@@ -158,12 +195,37 @@ def on_draw():
     maze.draw()
     pyg.graphics.draw_indexed(4,pyg.gl.GL_QUADS,[0,1,2,3,0],('v2i', (0,1000,200,1000,200,850,0,850)),('c3B',(120,120,120,120,120,120,120,120,120,120,120,120)))
     buttonLabel.draw()
+    ball.draw()
 
 @window.event
 def on_mouse_press(x, y, button, modifiers):
     if x > 0 and x < 200 and y > 850 and y < 1000 and button == pyg.window.mouse.LEFT:
         maze.genGrid(height = len(maze.grid), width = len(maze.grid[0]))
         Maze.genMaze(grid = maze.grid, start = [0,0], end = [19,29])
+        ball.pos = [215,785]
+        
+#key controls - arrows to move the ball around, w to get the walls of the current cell.
+@window.event
+def on_key_release(symbol,modifiers):
+    if symbol == pyg.window.key.DOWN:
+        currentCell = maze.getCellFromPos(pos = ball.pos, radius = ball.radius)
+        if not currentCell.walls[2]:
+            ball.pos[1] -= currentCell.cellH
+    elif symbol == pyg.window.key.UP:
+        currentCell = maze.getCellFromPos(pos = ball.pos, radius = ball.radius)
+        if not currentCell.walls[0]:
+            ball.pos[1] += currentCell.cellH
+    elif symbol == pyg.window.key.LEFT:
+        currentCell = maze.getCellFromPos(pos = ball.pos, radius = ball.radius)
+        if not currentCell.walls[3]:
+            ball.pos[0] -= currentCell.cellH
+    elif symbol == pyg.window.key.RIGHT:
+        currentCell = maze.getCellFromPos(pos = ball.pos, radius = ball.radius)
+        if not currentCell.walls[1]:
+            ball.pos[0] += currentCell.cellH
+    elif symbol == pyg.window.key.W:
+        print(maze.getCellFromPos(pos = ball.pos, radius = ball.radius).walls)
+
 
 #Main
 pyg.app.run()
