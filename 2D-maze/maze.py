@@ -1,6 +1,13 @@
 import pyglet as pyg
 import random
 from math import *
+from numpy.random import uniform
+import numpy as np
+import matplotlib.pyplot as plt 
+from filterpy.monte_carlo import systematic_resample
+from numpy.linalg import norm
+from numpy.random import randn
+import scipy.stats
 
 #a generic makeCircle modified for use here.
 def makeCircle(numPoints, radius, pos, color):
@@ -181,29 +188,18 @@ class Ball:
     def draw(self):
         makeCircle(100,self.radius,self.pos,color=(255,0,0)).draw(pyg.gl.GL_LINE_LOOP)
 
-maze = Maze(height = 20, width = 30)
-Maze.genMaze(grid = maze.grid, start = [0,0], end = [19,29])
 window = pyg.window.Window(width = 1200, height = 1000)
-label = pyg.text.Label('Maze Gen Alpha',font_name = 'Times New Roman', font_size = 36, x = window.width//2, y = 19*window.height//20, anchor_x = 'center', anchor_y = 'center')
-buttonLabel = pyg.text.Label('Maze',font_size = 16, x = 100, y = 925, anchor_x = 'center', anchor_y = 'center')
-ball = Ball(6,[215,785])
-
-@window.event
-def on_draw():
-    window.clear()
-    label.draw()
-    maze.draw()
-    pyg.graphics.draw_indexed(4,pyg.gl.GL_QUADS,[0,1,2,3,0],('v2i', (0,1000,200,1000,200,850,0,850)),('c3B',(120,120,120,120,120,120,120,120,120,120,120,120)))
-    buttonLabel.draw()
-    ball.draw()
 
 @window.event
 def on_mouse_press(x, y, button, modifiers):
     if x > 0 and x < 200 and y > 850 and y < 1000 and button == pyg.window.mouse.LEFT:
         maze.genGrid(height = len(maze.grid), width = len(maze.grid[0]))
         Maze.genMaze(grid = maze.grid, start = [0,0], end = [19,29])
-        ball.pos = [215,785]
+        ball.pos = [215 + maze.grid[0][0].cellH*random.randint(0,len(maze.grid[0])-1), 785 - maze.grid[0][0].cellH*random.randint(0,len(maze.grid)-1)]
+    if x > 1000 and x < 1200 and y > 850 and y < 1000 and button == pyg.window.mouse.LEFT:
+        plotPoints()
         
+
 #key controls - arrows to move the ball around, w to get the walls of the current cell.
 @window.event
 def on_key_release(symbol,modifiers):
@@ -211,21 +207,121 @@ def on_key_release(symbol,modifiers):
         currentCell = maze.getCellFromPos(pos = ball.pos, radius = ball.radius)
         if not currentCell.walls[2]:
             ball.pos[1] -= currentCell.cellH
+            predict(particles = particles, u = (0,-30), std = (1,1))
     elif symbol == pyg.window.key.UP:
         currentCell = maze.getCellFromPos(pos = ball.pos, radius = ball.radius)
         if not currentCell.walls[0]:
             ball.pos[1] += currentCell.cellH
+            predict(particles = particles, u = (0,30), std = (1,1))
     elif symbol == pyg.window.key.LEFT:
         currentCell = maze.getCellFromPos(pos = ball.pos, radius = ball.radius)
         if not currentCell.walls[3]:
             ball.pos[0] -= currentCell.cellH
+            predict(particles = particles, u = (-30,0), std = (1,1))
     elif symbol == pyg.window.key.RIGHT:
         currentCell = maze.getCellFromPos(pos = ball.pos, radius = ball.radius)
         if not currentCell.walls[1]:
             ball.pos[0] += currentCell.cellH
+            predict(particles = particles, u = (30,0), std = (1,1))
     elif symbol == pyg.window.key.W:
         print(maze.getCellFromPos(pos = ball.pos, radius = ball.radius).walls)
 
 
+@window.event
+def on_draw():
+    window.clear()
+    label.draw()
+    maze.draw()
+    pyg.graphics.draw_indexed(4,pyg.gl.GL_QUADS,[0,1,2,3,0],('v2i', (0,1000,200,1000,200,850,0,850)),('c3B',(120,120,120,120,120,120,120,120,120,120,120,120)))
+    pyg.graphics.draw_indexed(4,pyg.gl.GL_QUADS,[0,1,2,3,0],('v2i', (1000,1000,1200,1000,1200,850,1000,850)),('c3B',(120,120,120,120,120,120,120,120,120,120,120,120)))
+    buttonLabel.draw()
+    ball.draw()
+    plotLabel.draw()
+    #for p in particles:
+    #    makeCircle(100,3,[p[0],p[1]],color=(0,0,255)).draw(pyg.gl.GL_LINE_LOOP)
+
+#Filtering
+def create_uniform_particles(x_range, y_range, N):
+    particles = np.empty((N, 2))
+    particles[:, 0] = uniform(x_range[0], x_range[1], size=N)
+    particles[:, 1] = uniform(y_range[0], y_range[1], size=N)
+    return particles
+    
+def predict(particles, u, std, dt=1.):
+    """ move according to control input u [dx/dt, dy/dt]
+    with noise Q """
+
+    N = len(particles)
+
+    # move in the (noisy) commanded direction
+    dist = [(u[0] * dt) + (randn(N) * std[0]),(u[1] * dt) + (randn(N) * std[1])]
+    particles[:, 0] += dist[0]
+    particles[:, 1] += dist[1]
+
+#Update - update weights based on measurement
+def update(particles, weights, z, R, landmarks):
+    for i, landmark in enumerate(landmarks):
+        distance = np.linalg.norm(particles[:, 0:2] - landmark, axis=1)
+        weights *= scipy.stats.norm(distance, R).pdf(z[i])
+
+    weights += 1.e-300      # avoid round-off to zero
+    weights /= sum(weights) # normalize
+    
+#Resample - discard low probability particles and dupe high ones
+def simple_resample(particles, weights):
+    N = len(particles)
+    cumulative_sum = np.cumsum(weights)
+    cumulative_sum[-1] = 1. # avoid round-off error
+    indexes = np.searchsorted(cumulative_sum, random(N))
+
+    # resample according to indexes
+    particles[:] = particles[indexes]
+    weights.fill(1.0 / N)
+def neff(weights):
+    return 1. / np.sum(np.square(weights))
+def resample_from_index(particles, weights, indexes):
+    particles[:] = particles[indexes]
+    weights.resize(len(particles))
+    weights.fill (1.0 / len(weights))
+#Compute weighted mean and covariance (per dimension I guess) to get a final state estimate
+def estimate(particles, weights):
+    """returns mean and variance of the weighted particles"""
+    pos = particles[:, 0:2]
+    mean = np.average(pos, weights=weights, axis=0)
+    var  = np.average((pos - mean)**2, weights=weights, axis=0)
+    return mean, var
+    
+
 #Main
+maze = Maze(height = 20, width = 30)
+Maze.genMaze(grid = maze.grid, start = [0,0], end = [19,29])
+
+label = pyg.text.Label('Maze Gen Alpha',font_name = 'Times New Roman', font_size = 36, x = window.width//2, y = 19*window.height//20, anchor_x = 'center', anchor_y = 'center')
+buttonLabel = pyg.text.Label('Maze',font_size = 16, x = 100, y = 925, anchor_x = 'center', anchor_y = 'center')
+plotLabel = pyg.text.Label('Show PyPlot',font_size = 16, x = 1100, y = 925, anchor_x = 'center', anchor_y = 'center')
+ball = Ball(6, [215 + maze.grid[0][0].cellH*random.randint(0,len(maze.grid[0])-1), 785 - maze.grid[0][0].cellH*random.randint(0,len(maze.grid)-1)])
+
+#I'm going to generate particles randomly near the ball's position, say +- 100 pixels
+N = 1000
+particles = create_uniform_particles([ball.pos[0] - 200,ball.pos[0] + 200],[ball.pos[1] - 200,ball.pos[1] + 200], N)
+weights = np.ones(N)/N
+pos = np.array(ball.pos)
+sensor_std_error = 3 #guess
+
+
+#initial particle cloud condensing
+for i in range(50):
+    pass
+    
+
+def plotPoints():
+    plt.scatter(particles[:,0],particles[:,1],color = 'b',marker = 'o')
+    plt.scatter(ball.pos[0],ball.pos[1],color = 'g', marker = 'x')
+    plt.xlim(0,1200)
+    plt.ylim(0,1000)
+    plt.plot([200,1100,1100,200,200],[800,800,200,200,800],color = 'b')
+    plt.show()
+    plt.draw()
+
+plotPoints()
 pyg.app.run()
