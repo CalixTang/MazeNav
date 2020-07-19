@@ -46,7 +46,6 @@ class Maze:
                 self.grid[i][j].draw()
     
     def genMaze(grid, start, end):
-        print(start)
         if Maze.checkGrid(grid) == True:
             return
         else:
@@ -258,14 +257,15 @@ def predict(particles, u, std, dt=1.):
     particles[:, 0] += dist[0]
     particles[:, 1] += dist[1]
 
-#Update - update weights based on measurement
-def update(particles, weights, z, R, landmarks):
-    for i, landmark in enumerate(landmarks):
-        distance = np.linalg.norm(particles[:, 0:2] - landmark, axis=1)
-        weights *= scipy.stats.norm(distance, R).pdf(z[i])
+#Update - update weights based on measurement - I'm using 1 / euclidean distance
+def update(particles, weights, z):
+    """for i, landmark in enumerate(landmarks):
+    distance = np.linalg.norm(particles[:, 0:2] - landmark, axis=1)
+    weights *= scipy.stats.norm(distance, R).pdf(z[i])"""
 
-    weights += 1.e-300      # avoid round-off to zero
+    weights = 1 / (np.sqrt( (particles[:,0] - z[0])**2 + (particles[:,1] - z[1])**2 ) + 1.e-100) # 1/(euclidean + epsilon)
     weights /= sum(weights) # normalize
+    return weights
     
 #Resample - discard low probability particles and dupe high ones
 def simple_resample(particles, weights):
@@ -282,15 +282,36 @@ def neff(weights):
 def resample_from_index(particles, weights, indexes):
     particles[:] = particles[indexes]
     weights.resize(len(particles))
-    weights.fill (1.0 / len(weights))
+    weights.fill(1.0 / len(weights))
+
 #Compute weighted mean and covariance (per dimension I guess) to get a final state estimate
 def estimate(particles, weights):
     """returns mean and variance of the weighted particles"""
-    pos = particles[:, 0:2]
+    pos = particles[:, :]
     mean = np.average(pos, weights=weights, axis=0)
     var  = np.average((pos - mean)**2, weights=weights, axis=0)
     return mean, var
     
+#update and resample at the same time
+def update_and_resample(particles, weights, iters, threshold):
+    xs = []
+    for i in range(iters):
+        weights = update(particles = particles, weights = weights, z = ball.pos)
+        # resample if too few effective particles
+        print(weights)        
+        print(neff(weights))
+        if neff(weights) < threshold:
+            indexes = systematic_resample(weights)
+            resample_from_index(particles, weights, indexes)
+            assert np.allclose(weights, 1/N)
+        mu, var = estimate(particles, weights)
+        xs.append( [mu,var] )
+    return xs
+def compare_est_pos():
+    e = estimate(particles,weights)[0]
+    print('State estimate:' + str(e))
+    print('Ball position :' + str(ball.pos))    
+    print('Absolute Error:' + str(abs(ball.pos - e)))    
 
 #Main
 maze = Maze(height = 20, width = 30)
@@ -301,18 +322,16 @@ buttonLabel = pyg.text.Label('Maze',font_size = 16, x = 100, y = 925, anchor_x =
 plotLabel = pyg.text.Label('Show PyPlot',font_size = 16, x = 1100, y = 925, anchor_x = 'center', anchor_y = 'center')
 ball = Ball(6, [215 + maze.grid[0][0].cellH*random.randint(0,len(maze.grid[0])-1), 785 - maze.grid[0][0].cellH*random.randint(0,len(maze.grid)-1)])
 
-#I'm going to generate particles randomly near the ball's position, say +- 100 pixels
+#I'm going to generate particles randomly near the ball's position, say +- 200 pixels
 N = 1000
 particles = create_uniform_particles([ball.pos[0] - 200,ball.pos[0] + 200],[ball.pos[1] - 200,ball.pos[1] + 200], N)
 weights = np.ones(N)/N
 pos = np.array(ball.pos)
 sensor_std_error = 3 #guess
+xs = update_and_resample(particles = particles, weights = weights, iters = 50, threshold = N/2)
+compare_est_pos()
 
 
-#initial particle cloud condensing
-for i in range(50):
-    pass
-    
 
 def plotPoints():
     plt.scatter(particles[:,0],particles[:,1],color = 'b',marker = 'o')
@@ -323,5 +342,4 @@ def plotPoints():
     plt.show()
     plt.draw()
 
-plotPoints()
 pyg.app.run()
