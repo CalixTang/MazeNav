@@ -191,11 +191,17 @@ window = pyg.window.Window(width = 1200, height = 1000)
 
 @window.event
 def on_mouse_press(x, y, button, modifiers):
-    if x > 0 and x < 200 and y > 850 and y < 1000 and button == pyg.window.mouse.LEFT:
+    if x > 0 and x < 200 and y > 850 and y < 1000 and button == pyg.window.mouse.LEFT: #gen new maze
         maze.genGrid(height = len(maze.grid), width = len(maze.grid[0]))
         Maze.genMaze(grid = maze.grid, start = [0,0], end = [19,29])
         ball.pos = [215 + maze.grid[0][0].cellH*random.randint(0,len(maze.grid[0])-1), 785 - maze.grid[0][0].cellH*random.randint(0,len(maze.grid)-1)]
-    if x > 1000 and x < 1200 and y > 850 and y < 1000 and button == pyg.window.mouse.LEFT:
+        particles = create_uniform_particles([ball.pos[0] - 200,ball.pos[0] + 200],[ball.pos[1] - 200,ball.pos[1] + 200], N)
+        weights = np.ones(N)/N
+        pos = np.array(ball.pos)
+        sensor_std_error = (5,5) #guess
+        xs = update_and_resample(particles = particles, weights = weights, iters = 50, threshold = 3*N/4, R = sensor_std_error)
+        compare_est_pos()
+    if x > 1000 and x < 1200 and y > 850 and y < 1000 and button == pyg.window.mouse.LEFT: #pyplot
         plotPoints()
         
 
@@ -206,22 +212,30 @@ def on_key_release(symbol,modifiers):
         currentCell = maze.getCellFromPos(pos = ball.pos, radius = ball.radius)
         if not currentCell.walls[2]:
             ball.pos[1] -= currentCell.cellH
-            predict(particles = particles, u = (0,-30), std = (1,1))
+            predict(particles = particles, u = (0,-30), std = (5,5))
+            update_and_resample(particles = particles, weights = weights, iters = 50, threshold = 2*N/3, R = sensor_std_error)
+            compare_est_pos()
     elif symbol == pyg.window.key.UP:
         currentCell = maze.getCellFromPos(pos = ball.pos, radius = ball.radius)
         if not currentCell.walls[0]:
             ball.pos[1] += currentCell.cellH
-            predict(particles = particles, u = (0,30), std = (1,1))
+            predict(particles = particles, u = (0,30), std = (5,5))
+            update_and_resample(particles = particles, weights = weights, iters = 50, threshold = 2*N/3, R = sensor_std_error)
+            compare_est_pos()
     elif symbol == pyg.window.key.LEFT:
         currentCell = maze.getCellFromPos(pos = ball.pos, radius = ball.radius)
         if not currentCell.walls[3]:
             ball.pos[0] -= currentCell.cellH
-            predict(particles = particles, u = (-30,0), std = (1,1))
+            predict(particles = particles, u = (-30,0), std = (5,5))
+            update_and_resample(particles = particles, weights = weights, iters = 50, threshold = 2*N/3, R = sensor_std_error)
+            compare_est_pos()
     elif symbol == pyg.window.key.RIGHT:
         currentCell = maze.getCellFromPos(pos = ball.pos, radius = ball.radius)
         if not currentCell.walls[1]:
             ball.pos[0] += currentCell.cellH
-            predict(particles = particles, u = (30,0), std = (1,1))
+            predict(particles = particles, u = (30,0), std = (5,5))
+            update_and_resample(particles = particles, weights = weights, iters = 50, threshold = 2*N/3, R = sensor_std_error)
+            compare_est_pos()            
     elif symbol == pyg.window.key.W:
         print(maze.getCellFromPos(pos = ball.pos, radius = ball.radius).walls)
 
@@ -258,7 +272,7 @@ def predict(particles, u, std, dt=1.):
     particles[:, 1] += dist[1]
 
 #Update - update weights based on measurement - I'm using 1 / euclidean distance
-def update(particles, weights, z):
+def update(particles, weights, z, R):
     """for i, landmark in enumerate(landmarks):
     distance = np.linalg.norm(particles[:, 0:2] - landmark, axis=1)
     weights *= scipy.stats.norm(distance, R).pdf(z[i])"""
@@ -293,13 +307,13 @@ def estimate(particles, weights):
     return mean, var
     
 #update and resample at the same time
-def update_and_resample(particles, weights, iters, threshold):
+def update_and_resample(particles, weights, iters, threshold, R):
     xs = []
     for i in range(iters):
-        weights = update(particles = particles, weights = weights, z = ball.pos)
+        weights = update(particles = particles, weights = weights, z = ball.pos, R = R)
         # resample if too few effective particles
-        print(weights)        
-        print(neff(weights))
+        #print(weights)        
+        #print(neff(weights))
         if neff(weights) < threshold:
             indexes = systematic_resample(weights)
             resample_from_index(particles, weights, indexes)
@@ -311,7 +325,8 @@ def compare_est_pos():
     e = estimate(particles,weights)[0]
     print('State estimate:' + str(e))
     print('Ball position :' + str(ball.pos))    
-    print('Absolute Error:' + str(abs(ball.pos - e)))    
+    print('Absolute Error:' + str(abs(ball.pos - e))) 
+    print('Distance Error:' + str(sqrt( sum((ball.pos - e)**2))))
 
 #Main
 maze = Maze(height = 20, width = 30)
@@ -327,8 +342,8 @@ N = 1000
 particles = create_uniform_particles([ball.pos[0] - 200,ball.pos[0] + 200],[ball.pos[1] - 200,ball.pos[1] + 200], N)
 weights = np.ones(N)/N
 pos = np.array(ball.pos)
-sensor_std_error = 3 #guess
-xs = update_and_resample(particles = particles, weights = weights, iters = 50, threshold = N/2)
+sensor_std_error = (5,5) #guess
+xs = update_and_resample(particles = particles, weights = weights, iters = 50, threshold = 3*N/4, R = sensor_std_error)
 compare_est_pos()
 
 
