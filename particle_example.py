@@ -42,6 +42,7 @@ def predict(particles, u, std, dt=1.):
 def update(particles, weights, z, R, landmarks):
     for i, landmark in enumerate(landmarks):
         distance = np.linalg.norm(particles[:, 0:2] - landmark, axis=1)
+        print(z.shape)
         weights *= scipy.stats.norm(distance, R).pdf(z[i])
 
     weights += 1.e-300      # avoid round-off to zero

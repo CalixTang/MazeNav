@@ -1,5 +1,20 @@
 import vpython as vp
 import random
+import random
+from math import *
+import time
+from numpy.random import uniform
+import numpy as np
+import matplotlib.pyplot as plt 
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
+from filterpy.monte_carlo import systematic_resample
+from numpy.linalg import norm
+from numpy.random import randn
+import scipy.stats
+
+
+import threading
+import time
 
 #3D version of the 2D Maze class
 class Maze:
@@ -176,7 +191,6 @@ for i in range(len(maze.grid)):
     for j in range(len(maze.grid[0])):
         for k in range(len(maze.grid[0][0])):
             #Using if statements for each wall, draw the ones that exist.
-            print(str(i) + " " + str(j) + " " + str(k))
             abspos = vp.vector(maze.grid[i][j][k].pos[1], maze.height - maze.grid[i][j][k].pos[0], maze.length - maze.grid[i][j][k].pos[2])
             cellcolor = vp.vector(random.random(),random.random(),random.random())
             DBL = vp.vertex(pos = abspos + vp.vector(0,-1,-1), color = cellcolor)
@@ -200,36 +214,181 @@ for i in range(len(maze.grid)):
             if maze.grid[i][j][k].walls[5]:
                 quadArray.append(vp.quad(vs = [DFL,DFR,DBR,DBL]))
 
+def create_uniform_particles(x_range, y_range, z_range, theta_range, phi_range, N):
+    particles = np.empty((N, 5))
+    particles[:, 0] = uniform(x_range[0], x_range[1], size=N)
+    particles[:, 1] = uniform(y_range[0], y_range[1], size=N)
+    particles[:, 2] = uniform(z_range[0], z_range[1], size=N)
+    particles[:, 3] = uniform(theta_range[0], theta_range[1], size = N)
+    particles[:, 4] = uniform(phi_range[0], phi_range[1], size = N)
+    return particles
+    
+def predict(particles, u, std, dt=1.):
+    """ move according to control input u [dx/dt,dy/dt,dz/dt,dtheta/dt,dphi/dt]
+    with noise Q """
+    
+    N = len(particles)
+    # move in the (noisy) commanded direction
+    dist = [(u[0] * dt) + (randn(N) * std[0]),(u[1] * dt) + (randn(N) * std[1]),(u[2] * dt) + (randn(N) * std[2]),(u[3] * dt) + (randn(N) * std[3]),(u[4] * dt) + (randn(N) * std[4])]
+    particles[:, 0] += dist[0]
+    particles[:, 1] += dist[1]
+    particles[:, 2] += dist[2]
+    particles[:, 3] += dist[3]
+    particles[:, 3] = (particles[:,3] + np.pi)%(2*np.pi) - np.pi #Convert [-pi,pi] to [0,2pi], modulo, and convert back
+    particles[:, 4] += dist[4]
+    particles[:, 4] %= np.pi
+    
+#Update - update weights based on measurement - no idea what I'm doing here.
+def update(particles, weights, z, R):
+    distance = np.linalg.norm(particles[:] - z + randn(len(R))*R, axis=1)
+    weights = 1/(distance + 1.e-300)
+    weights /= sum(weights) # normalize
+    return weights 
+    
+def neff(weights):
+    return 1. / np.sum(np.square(weights))
+    
+def resample_from_index(particles, weights, indexes):
+    particles[:] = particles[indexes]
+    weights.resize(len(particles))
+    weights.fill(1.0 / len(weights))
+
+#Compute weighted mean and covariance (per dimension I guess) to get a final state estimate
+def estimate(particles, weights):
+    """returns mean and variance of the weighted particles"""
+    pos = particles[:, :]
+    mean = np.average(pos, weights=weights, axis=0)
+    var  = np.average((pos - mean)**2, weights=weights, axis=0)
+    return mean, var
+
+def compare_est_pos(est, pos):
+    print('State estimate:' + str(est[0]))
+    print('Actual position:' + str(pos))    
+    print('Absolute Error:' + str(abs(pos - est[0]))) 
+    print('Position Error:' + str(sqrt(sum(pos[0:2] - est[0][0:2])**2)))
+    print('Dist Err (all var):' + str(sqrt( sum((pos - est[0])**2))))
+
 #scene.forward = vp.vector(0,-1,0)
 #scene.camera.pos = vp.vector(0.5,5.5,6.5)
 scene.forward = vp.vector(0,-1,0)
-scene.camera.pos = vp.vector(0.5,6.5,6.5)
+scene.camera.pos = vp.vector(0.5,6.5,6.5) #position
+pos = np.array((scene.camera.pos.x,scene.camera.pos.y,scene.camera.pos.z, atan2(scene.camera.axis.y,scene.camera.axis.x), acos(scene.camera.axis.z / scene.camera.axis.mag))) #x y z theta phi (because we have bearing this time)
+#tan(theta) = y/x and phi = arccos( z / mag(position)); the interpretation is theta is cylindrical angle from pos x to neg y and phi is from positive z down.
+#Theta should stay in -pi to pi, phi from 0 to pi
 scene.camera.axis = vp.vector(0,-1,0)
 scene.up = vp.vector(0,0,-1)
+scene.userspin, scene.userpan, scene.userzoom = False, False, False
+
+#create particles in a cloud of +-3 in each direction within the legal ranges of theta and phi
+N = 1000
+particles = create_uniform_particles( (pos[0]-3,pos[0]+3) , (pos[1]-3,pos[1]+3), (pos[2]-3,pos[2]+3), (-1*np.pi,np.pi), (0,np.pi), N)
+threshold = N/2
+sensor_std_error = 0.1 #guess
+weights = np.ones(N) / N
+running = True
 
 
-while True:
-    vp.rate(5)
-    k = vp.keysdown()
-    if 'w' in k:
-        scene.camera.pos += scene.forward
-    if 's' in k:
-        scene.camera.pos -= scene.forward
-    if 'up' in k:
-        temp = vp.vector(scene.forward.x,scene.forward.y,scene.forward.z)
-        scene.forward = scene.up
+
+def anim_thread(fps = 60):
+    dt = 1/fps
+    move_error = 0.1 #update this value
+    turn_error = 0.1 #update this value
+    move_vel = .50
+    turn_vel = .60
+    while running:
+        vp.rate(fps)
+        k = vp.keysdown()
+        u = np.array([0.,0.,0.,0.,0.])
+        u = u.astype('float64')
+        if 'w' in k:
+            #print(scene.forward.norm()*move_vel*dt*(1+move_error*randn()))
+            delta = scene.forward.norm()*move_vel*dt*(1+move_error*randn())
+            u += np.array([delta.x,delta.y,delta.z,0.,0.])
+            scene.camera.pos += delta
+        if 's' in k:
+            delta = scene.forward.norm()*move_vel*dt*(1+move_error*randn())
+            u += np.array([delta.x,delta.y,delta.z,0.,0.])
+            scene.camera.pos -= delta
+        if 'd' in k:
+            delta = scene.forward.cross(scene.up).norm()*move_vel*dt*(1+move_error*randn())
+            u += np.array([delta.x,delta.y,delta.z,0.,0.])
+            scene.camera.pos += delta
+        if 'a' in k:
+            delta = scene.forward.cross(scene.up).norm()*move_vel*dt*(1+move_error*randn())
+            u += np.array([delta.x,delta.y,delta.z,0.,0.])
+            scene.camera.pos -= delta
+        if 'up' in k:
+            delta = turn_vel*dt*(1+turn_error*randn())
+            u += np.array([0.,0.,0.,0.,delta])
+            scene.camera.axis = scene.camera.axis.rotate(angle = delta, axis = scene.camera.axis.cross(scene.up))
+        if 'down' in k:
+            delta = -1*turn_vel*dt*(1+turn_error*randn())
+            u += np.array([0.,0.,0.,0.,delta])
+            scene.camera.axis = scene.camera.axis.rotate(angle = delta, axis = scene.camera.axis.cross(scene.up))
+        if 'right' in k:          
+            delta = -1*turn_vel*dt*(1+turn_error*randn())
+            u += np.array([0.,0.,0.,delta,0.])
+            scene.camera.axis = scene.camera.axis.rotate(angle = delta, axis = scene.up)
+        if 'left' in k:
+            delta = turn_vel*dt*(1+turn_error*randn())
+            u += np.array([0.,0.,0.,delta,0.])
+            scene.camera.axis = scene.camera.axis.rotate(angle = delta, axis = scene.up)
         scene.camera.axis.mag = 1
-        scene.up = -1*temp
-    if 'down' in k:
-        temp = vp.vector(scene.forward.x,scene.forward.y,scene.forward.z)
-        scene.forward = -1*scene.up
-        scene.camera.axis.mag = 1
-        scene.up = temp
-    if 'right' in k:   
-        temp = vp.vector(scene.forward.x,scene.forward.y,scene.forward.z)
-        scene.forward = -1*vp.vector.cross(scene.up,temp)
-        scene.camera.axis.mag = 1
-    if 'left' in k:
-        temp = vp.vector(scene.forward.x,scene.forward.y,scene.forward.z)
-        scene.forward = vp.vector.cross(scene.up,temp)
-        scene.camera.axis.mag = 1
+        scene.forward.mag = 1
+        scene.up.mag = 1
+        #Update Pos - do I need error in this?
+        pos = np.array((scene.camera.pos.x,scene.camera.pos.y,scene.camera.pos.z, atan2(scene.camera.axis.y,scene.camera.axis.x), acos(scene.camera.axis.z / scene.camera.axis.mag))) #x y z theta phi (because we have bearing this time)
+        #Predict
+        predict(particles = particles, u = u, std = [move_error,move_error,move_error,turn_error,turn_error], dt = 1.)
+        #update
+        update(particles = particles, weights = weights, z = pos, R = [move_error,move_error,move_error,turn_error,turn_error])
+        #Neff and resample
+        if neff(weights) < threshold:
+            indexes = systematic_resample(weights)
+            resample_from_index(particles, weights, indexes)
+            assert np.allclose(weights, 1/N)
+        #print out error maybe
+        est = estimate(particles, weights)
+        compare_est_pos(est = est, pos = pos)
+        
+def pyplot_thread(fps):
+    while running:
+        est = estimate(particles,weights)
+        fig, (ax1, ax2) = plt.subplots(1, 2)
+        fig.suptitle('Position tracking of camera')
+        ax1 = fig.add_subplot(1,2,1, projection='3d')
+        ax1.scatter(particles[:,0], particles[:,1], particles[:,2], color = 'b', marker = 'o')
+        ax1.scatter(pos[0],pos[1],pos[2],color = 'r')
+        ax1.scatter(est[0][0],est[0][1],est[0][2], color = 'g', marker = '+', linewidth = 5)
+        ax1.set_xlabel('X')
+        ax1.set_ylabel('Y')
+        ax1.set_zlabel('Z')
+        ax1.set_title('Cartesian Coordinates')
+        ax2.scatter(particles[:,3], particles[:,4], color = 'b', marker = 'o')
+        ax2.scatter(pos[3],pos[4],color = 'r')
+        ax2.scatter(est[0][3],est[0][4], color = 'g', marker = '+', linewidth = 5)
+        ax2.plot([-1*np.pi,np.pi,np.pi,-1*np.pi,-1*np.pi],[0,0,np.pi,np.pi,0],color='g')
+        ax2.set_xlabel('Theta')
+        ax2.set_ylabel('Phi')
+        ax2.set_title('3D Bearing')
+        plt.show()
+        time.sleep(1/fps)
+
+glowscript = threading.Thread(target = anim_thread, args = [60])
+glowscript.start()
+plot = threading.Thread(target = pyplot_thread, args = [60])
+plot.start()
+
+
+while running:
+    command = input('>> ')
+    if str.casefold(command) is "quit":
+        running = False
+        plot.exit()
+        glowscript.exit()
+    elif str.casefold(command) is "error":
+        #TODO add estimation, command line print
+        pass
+    elif str.casefold(command) is "pos":
+        print('Cartesian Coordinates: ' + str(pos[0:2]) + ', Theta: ' + str(pos[3]) + ', Phi: ' + str(pos[4]))
+    
