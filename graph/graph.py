@@ -1,42 +1,17 @@
-import pyglet as pyg
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 from math import *
 import random
 
-wwidth = 1200
-wheight = 1000
-'''window = pyg.window.Window(width = wwidth, height = wheight)
-pyg.gl.glClearColor(0.5,0,0,1)
-R,G,B,A = 120,120,120,255
-bckgrd = pyg.image.SolidColorImagePattern((R,G,B,A)).create_image(wwidth,wheight)'''
 
-#a generic makeCircle modified for use here.
-def makeCircle(numPoints, radius, pos, color):
-    verts = []
-    colors = []
-    for i in range(numPoints):
-        angle = radians(float(i)/numPoints * 360.0)
-        x = radius*cos(angle) + pos[0]
-        y = radius*sin(angle) + pos[1]
-        verts += [x,y]
-        colors += color
-    return pyg.graphics.vertex_list(numPoints, ('v2f', verts), ('c3B', colors))
-
-
-   
 #Ball: player controlled
 class Ball:
-    def __init__(self, radius, pos, id, bcolor):
+    def __init__(self, radius, pos, id):
         self.radius = radius
         self.pos = pos
         self.id = id
-        self.bcolor = bcolor
-    def draw(self):
-        makeCircle(100,self.radius,self.pos,color=self.bcolor).draw(pyg.gl.GL_LINE_LOOP)
-        pyg.text.Label(text = str(self.id), font_name = 'Arial', font_size = self.radius, x = self.pos[0], y = self.pos[1], anchor_x = 'center', anchor_y = 'center').draw()
-
+    
 
 def fillGraph(N):
     pos = -1*np.ones((N,2))
@@ -77,16 +52,25 @@ def onclick(event):
             id = i
             #print('Clicked Node: ' + str(id))
     if id > 0 and id in G.adj[ball.id] and event.button == 1:
-        ball.id = id
-        plt.clf()
+        ball.id = id #update the ball to be in the adjacent node.
+        
+        for u in G.adj[ball.id]: #for all adjacents of the ball in G    
+            if xs[u] in np.array(H.nodes.data('x')) and ys[u] in np.array(H.nodes.data('y')):
+                continue
+            else:
+                H.add_node(H.number_of_nodes(), x = xs[u], y = ys[u]) #if the adjacent's x and y is not in H, add it and increment t0
+        for ax in axs:
+            ax.clear()
         plot()
     elif id > 0 and event.button == 2:
         ball.id = id
-        plt.clf()
+        for ax in axs:
+            ax.clear()
         plot()
     elif id > 0 and event.button == 3:
         print('Adjacent nodes: ' + str(G.adj[id]))
     fig.canvas.draw()
+
 
 def plot():
     axs[0].set_title('Interactive graph')
@@ -97,6 +81,8 @@ def plot():
     axs[1].set_ylim(0,1)
     #interactive graph
     axs[0].scatter(np.array(xs)[:,1],np.array(ys)[:,1], marker = 'o', color = '#66b3ff', linewidth = 1, s = 300)
+    for u in G.adj[ball.id]:
+        axs[0].scatter(xs[u],ys[u], marker = 'o', edgecolor = 'k', color = '#66b3ff', linewidth = 2, s = 300)
     for (i, u) in G.nodes.data():
         axs[0].text(x = u['x'], y = u['y'], s = str(i), color = 'w', horizontalalignment = 'center', verticalalignment = 'center')
     axs[0].scatter(xs[ball.id],ys[ball.id], marker = 'o', edgecolor = 'k', color = 'r', linewidth = 1, s = 100)
@@ -104,15 +90,19 @@ def plot():
         axs[0].plot([xs[u],xs[v]],[ys[u],ys[v]], linewidth = 0.5)
     
     #vision graph
+    vxs, vys = H.nodes.data('x'), H.nodes.data('y')
+    print(np.array(vxs))
+    print(np.array(vys))
     axs[1].scatter(np.array(vxs)[:,1],np.array(vys)[:,1], marker = 'o', edgecolor = 'k', color = '#66b3ff', linewidth = 1, s = 300)
     for (i, u) in H.nodes.data():
         axs[1].text(x = u['x'], y = u['y'], s = str(i), color = 'w', horizontalalignment = 'center', verticalalignment = 'center')
-    #axs[1].scatter(vxs[ball.id],vys[ball.id], marker = 'o', edgecolor = 'k', color = 'r', linewidth = 1, s = 100)
+    axs[1].scatter(xs[ball.id],ys[ball.id], marker = 'o', edgecolor = 'k', color = 'r', linewidth = 1, s = 100)
     for (u, v, w) in H.edges.data():
         axs[1].plot([vxs[u],vxs[v]],[vys[u],vys[v]], linewidth = 0.5, color = 'k')
     
+    
 n = 50    
-ball = Ball(12, [800, 100], random.randint(0,n-1), (255,0,0)) #human controlled   
+ball = Ball(12, [800, 100], random.randint(0,n-1)) #human controlled   
 node_radius_mpl = 0.0212956146 #DO NOT TOUCH
 G = nx.Graph()
 H = nx.Graph()
@@ -122,10 +112,8 @@ fillGraph(n)
 xs, ys = G.nodes.data('x'), G.nodes.data('y')
 H.add_node(0, x = xs[ball.id], y = ys[ball.id])
 print(G.adj[ball.id])
-t0 = 1
 for u in G.adj[ball.id]:
-    H.add_node(t0, x = xs[u], y = ys[u])
-    t0 += 1
+    H.add_node(H.number_of_nodes(), x = xs[u], y = ys[u])
     
 vxs, vys = H.nodes.data('x'), H.nodes.data('y')
 #fig = plt.figure(figsize = (12,8)) #PLEASE DON'T RESIZE. THE NODE MARKERS (CIRCLES) DON'T RESIZE WHEN THE WINDOW DOES AND IT MESSES THINGS UP.
