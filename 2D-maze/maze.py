@@ -328,6 +328,7 @@ def compare_est_pos():
     print('Absolute Error:' + str(abs(ball.pos - e))) 
     print('Distance Error:' + str(sqrt( sum((ball.pos - e)**2))))
 
+
 #Main
 maze = Maze(height = 20, width = 30)
 Maze.genMaze(grid = maze.grid, start = [0,0], end = [19,29])
