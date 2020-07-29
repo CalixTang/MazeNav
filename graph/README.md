@@ -1,6 +1,6 @@
-#Graph
+# Graph
 
-##Background
+## Background
 While the 2D and 3D mazes are good for tracking position, the particle filter that runs them has to have a good guess at initial position
 to converge well. That makes less usable solutions for a problem where absolute position or bearing may not be known. This filter tries
 to remedy that by modeling the blood vessels as a graph. Instead of having walls that you can or cannot phase through, we have a structure
@@ -9,7 +9,7 @@ eliminates impossible positions based on the "neighbor" count of each node (the 
 It has no idea of absolute position or where the probe is going, but tries to use deduction to figure out where in the large network the
 probe could be.
  
-##Usage
+## Usage
 When you run graph.py, only a matplotlib window should show up. On the left graph is the full network of blood vessels (randomly generated)
 in graph form. The circles are nodes and the rainbow lines are edges. On the right is what the probe "sees". It can "see" the node it is 
 currently at and all its neighbors. It also "knows" the full history of where it has been and seen. This means the nodes and edges on the right

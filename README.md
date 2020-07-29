@@ -1,6 +1,6 @@
-#MazeNav
+# MazeNav
 
-##Purpose
+## Purpose
 All python files in this repository are in their own folder or in the same folder as this README. Those in the latter were used for example and demonstration purposes while 
 writing the ones in their own folders. Their names may suggest the solutions used to tackle the prompt: given a network of blood vessels and a probe that is in that network,
 how can we find out where in that network the probe is? As it might suggest, Gaussians were first looked at for use in Kalman filtering, then particle filters were researched.
