@@ -26,6 +26,7 @@ Controls:
 >Left click on a node in the left graph to move to it. This will *only move the probe to that node if it's a neighbor of the current node.*
 >Middle click on a node in the left graph to forcefully move the probe. This will break the filter, so I don't suggest you use this.
 >Right click on a node in the left graph to get a command-line printout of all its neighbors. This is an outdated feature.
+>Enter to open a new figure that displays a bar plot of all nodes and weights.
 
 I suggest that you run maze.py from the command line, as all printouts of possible node positions are done there. The printout is a sorted array
 from high to low of all nodes and their possibilities of being where the probe is at.

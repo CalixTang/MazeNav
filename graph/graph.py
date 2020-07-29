@@ -116,6 +116,11 @@ def onclick(event):
         print(str(G.adj[id].items()))
     fig.canvas.draw()
 
+def release(event):
+    print(event.key)
+    if event.key == "enter":
+        plot_prob(weights)
+
 def plot():
     axs[0].set_title('Interactive graph')
     axs[1].set_title('Camera\'s vision tracker')
@@ -159,6 +164,16 @@ def plot():
     for (u, v, w) in H.edges.data():
         axs[1].plot([vxs[u],vxs[v]],[vys[u],vys[v]], linewidth = 0.5, color = 'k')
 
+def plot_prob(weights):
+    width = 0.8
+    fig, ax = plt.subplots()
+    xs = np.arange(len(weights))
+    ax.set_xlabel('Node Number')
+    ax.set_ylabel('Probabilities')
+    ax.set_xticks(xs)
+    ax.set_ylim(bottom = 0.0, top = 1.0)
+    ax.bar(xs, weights, width)
+    fig.show()
 
 def propagate(weights):
     new = np.zeros(G.number_of_nodes())
@@ -177,9 +192,11 @@ def update(weights, move):
     for i in range(len(weights)):
         neighbors = G.adj[i].items()
         if len(neighbors) != len(H.adj[move].items()):#If impossible: penalize.
-            prob[i] = 0
+            #prob[i] = 0
+            pass
         else: #If possible: weight = average of neighbors?
-            prob[i] *=2
+            #prob[i] *= 2
+            prob[i] *= 10
             '''for (j, u) in neighbors:
                 prob[i] += weights[j] 
             prob[i] /= len(neighbors)'''   
@@ -189,7 +206,8 @@ def update(weights, move):
 def estimate(weights):    
     ranks = np.flip(np.argsort(weights))
     print([str(ranks[i]) + ': ' + str(weights[ranks[i]]) for i in range(len(weights))])
-    
+   
+
 n = 50    
 prev_moves = np.array([0])
 ball = Ball(0, random.randint(0,n-1)) #human controlled   
@@ -213,7 +231,7 @@ fig, axs = plt.subplots(1, 2, constrained_layout = True, figsize = (12,8))
 
 
 cid = fig.canvas.mpl_connect('button_press_event', onclick)
-
+cidtwo = fig.canvas.mpl_connect('key_release_event', release)
 
 plot()
 plt.show()
