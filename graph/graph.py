@@ -45,82 +45,107 @@ def fillGraph(N): #generates random-ish graph with nodes 0 to n-1
                 G.add_edges_from([(b,i)])
 
 def onclick(event):
-    print('%s click: button=%d, x=%d, y=%d, xdata=%f, ydata=%f' %
+    '''print('%s click: button=%d, x=%d, y=%d, xdata=%f, ydata=%f' %
           ('double' if event.dblclick else 'single', event.button,
-           event.x, event.y, event.xdata, event.ydata))
+           event.x, event.y, event.xdata, event.ydata))'''
     id = -1
-    for i in range(n):
-        if sqrt((G.nodes.data('x')[i] - event.xdata)**2 + (G.nodes.data('y')[i] - event.ydata)**2) <= node_radius_mpl:
-            id = i
-            #print('Clicked Node: ' + str(id))
-    if id > -1 and id in G.adj[ball.id] and event.button == 1:
-        global vxs
-        global vys
-        ball.id = id #update the ball to be in the adjacent node.
-        
-        #find the corresponding H node for the G node you move to.
-        t0 = 0
-        dist = 1.0e30
-        for i in range(H.number_of_nodes()):
-            d = sqrt((vxs[i]-xs[ball.id])**2 + (vys[i]-ys[ball.id])**2)
-            if d < dist:
-                t0 = i
-                dist = d
-        ball.pos = t0
-        global prev_moves
-        prev_moves = np.append(prev_moves,ball.pos)
-        for u, v in G.adj[ball.id].items(): #for all neighbors in G
-            #if the neighbor is in H already, check if an edge exists
-            '''if xs[u] in np.array(H.nodes.data('x')) and ys[u] in np.array(H.nodes.data('y')):#if we've already visited or seen the neighbor
-                t1 = -1
-                max = 1.0e30
-                for i in range(H.number_of_nodes()):
-                    di = sqrt((vxs[i]-xs[u])**2 + (vys[i]-ys[u])**2)
-                    if di < max:
-                        t1 = i
-                        dist = d 
-                if (ball.pos,t1) not in H.edges and (t1, ball.pos) not in H.edges:
-                    H.add_edges_from([(ball.pos,t1)])'''
-            index = -1
-            for i in H.nodes:
-                if vxs[i] == xs[u] and vys[i] == ys[u]:
-                    index = i
-                    break
-            if index > -1:
-                if (ball.pos,index) not in H.edges and (index, ball.pos) not in H.edges:
-                    H.add_edges_from([(ball.pos,index)])
-            #Otherwise just add a new node
-            else:
-                H.add_node(H.number_of_nodes(), x = xs[u], y = ys[u]) #if the adjacent's x and y is not in H, add it and increment t0
-                H.add_edges_from([(ball.pos,H.number_of_nodes()-1)])     
-        
-        vxs, vys = H.nodes.data('x'), H.nodes.data('y')
-        #filtering time
-        #propagate
-        global weights
-        weights = propagate(weights)
-        #update
-        weights = update( weights, ball.pos)
-        #estimate
-        estimate(weights)
-        for ax in axs:
-            ax.clear()
-        plot()
-    elif id > 0 and event.button == 2:
-        ball.id = id
-        for ax in axs:
-            ax.clear()
-        plot()
-    elif id > 0 and event.button == 3:
-        print(str(len(G.adj[id].items())) + ' neighbors.')
-        print(str(G.adj[id].items()))
-    fig.canvas.draw()
+    if event.xdata is not None and event.ydata is not None: 
+        for i in range(n):
+            if sqrt((G.nodes.data('x')[i] - event.xdata)**2 + (G.nodes.data('y')[i] - event.ydata)**2) <= node_radius_mpl:
+                id = i
+                #print('Clicked Node: ' + str(id))
+        if id > -1 and id in G.adj[ball.id] and event.button == 1:
+            global vxs
+            global vys
+            global prev_moves
+            global prev_weights
+            global weights
+            global hist_index
+            ball.id = id #update the ball to be in the adjacent node.
+            
+            #find the corresponding H node for the G node you move to.
+            t0 = 0
+            dist = 1.0e30
+            for i in range(H.number_of_nodes()):
+                d = sqrt((vxs[i]-xs[ball.id])**2 + (vys[i]-ys[ball.id])**2)
+                if d < dist:
+                    t0 = i
+                    dist = d
+            ball.pos = t0
+           
+            
+            
+            for u, v in G.adj[ball.id].items(): #for all neighbors in G
+                #if the neighbor is in H already, check if an edge exists
+                index = -1
+                for i in H.nodes:
+                    if vxs[i] == xs[u] and vys[i] == ys[u]:
+                        index = i
+                        break
+                if index > -1:
+                    if (ball.pos,index) not in H.edges and (index, ball.pos) not in H.edges:
+                        H.add_edges_from([(ball.pos,index)])
+                #Otherwise just add a new node
+                else:
+                    H.add_node(H.number_of_nodes(), x = xs[u], y = ys[u]) #if the adjacent's x and y is not in H, add it and increment t0
+                    H.add_edges_from([(ball.pos,H.number_of_nodes()-1)])     
+            
+            vxs, vys = H.nodes.data('x'), H.nodes.data('y')
+            #filtering time
+            #propagate
+            weights = propagate(weights)
+            #update
+            weights = update(weights, ball.pos)
+            #estimate
+            estimate(weights)
+            
+            prev_moves = np.hstack((prev_moves[:,0:hist_index],np.array([ball.id,ball.pos]).reshape(2,1)))
+            prev_weights = np.hstack((prev_weights[:,0:hist_index], weights.reshape(n,1)))
+            hist_index = len(prev_weights[0])
+            
+            for ax in axs:
+                ax.clear()
+            plot()
+        elif id > 0 and event.button == 2:
+            ball.id = id
+            for ax in axs:
+                ax.clear()
+            plot()
+        elif id > 0 and event.button == 3:
+            print(str(len(G.adj[id].items())) + ' neighbors.')
+            print(str(G.adj[id].items()))
+        fig.canvas.draw()
+    else:
+        pass
 
-def release(event):
-    print(event.key)
+def press(event):
+    global hist_index
+    global weights
     if event.key == "enter":
         plot_prob(weights)
-
+    elif event.key == "left":
+        if hist_index > 0:
+            hist_index -= 1
+            ball.id, ball.pos = prev_moves[0][hist_index-1], prev_moves[1][hist_index-1]
+            weights = prev_weights[:,hist_index-1]
+            for ax in axs:
+                ax.clear()
+            plot()
+            fig.canvas.draw()
+        else:
+            print("Can't go any further back in time!")
+    elif event.key == "right":
+        if hist_index < len(prev_weights[0]):
+            hist_index += 1
+            ball.id,ball.pos = prev_moves[0][hist_index-1], prev_moves[1][hist_index-1]
+            weights = prev_weights[:,hist_index-1]
+            for ax in axs:
+                ax.clear()
+            plot()
+            fig.canvas.draw()
+        else:
+            print("Can't go any more forward in time!")
+    
 def plot():
     axs[0].set_title('Interactive graph')
     axs[1].set_title('Camera\'s vision tracker')
@@ -150,10 +175,6 @@ def plot():
         axs[0].text(x = u['x'], y = u['y'], s = str(i), color = 'w', horizontalalignment = 'center', verticalalignment = 'center')
     #draw the probe
     axs[0].scatter(xs[ball.id],ys[ball.id], marker = 'o', edgecolor = 'k', color = 'r', linewidth = 1, s = 100)
-    
-    #display particles - honestly unneeded
-    #axs[0].scatter(np.array(xs)[particles],np.array(ys)[particles], color = 'g', alpha = 0.4, marker = 'o')
-    
     
     #vision graph
     vxs, vys = H.nodes.data('x'), H.nodes.data('y')
@@ -196,7 +217,7 @@ def update(weights, move):
             pass
         else: #If possible: weight = average of neighbors?
             #prob[i] *= 2
-            prob[i] *= 10
+            prob[i] *= 5
             '''for (j, u) in neighbors:
                 prob[i] += weights[j] 
             prob[i] /= len(neighbors)'''   
@@ -209,8 +230,8 @@ def estimate(weights):
    
 
 n = 50    
-prev_moves = np.array([0])
 ball = Ball(0, random.randint(0,n-1)) #human controlled   
+
 node_radius_mpl = 0.0232956146 #DO NOT TOUCH
 G = nx.Graph()
 H = nx.Graph()
@@ -223,7 +244,11 @@ H.add_node(0, x = xs[ball.id], y = ys[ball.id])
 for u in G.adj[ball.id]:
     H.add_node(H.number_of_nodes(), x = xs[u], y = ys[u])
     H.add_edges_from([(0,H.number_of_nodes()-1)])
-
+    
+prev_moves = np.array([ball.id,0]).reshape(2,1)
+prev_weights = weights[:].reshape(n,1)
+print(prev_weights)
+hist_index = 1
     
 vxs, vys = H.nodes.data('x'), H.nodes.data('y')
 #fig = plt.figure(figsize = (12,8)) #PLEASE DON'T RESIZE. THE NODE MARKERS (CIRCLES) DON'T RESIZE WHEN THE WINDOW DOES AND IT MESSES THINGS UP.
@@ -231,7 +256,7 @@ fig, axs = plt.subplots(1, 2, constrained_layout = True, figsize = (12,8))
 
 
 cid = fig.canvas.mpl_connect('button_press_event', onclick)
-cidtwo = fig.canvas.mpl_connect('key_release_event', release)
+cidtwo = fig.canvas.mpl_connect('key_press_event', press)
 
 plot()
 plt.show()
