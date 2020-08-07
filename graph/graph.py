@@ -28,7 +28,8 @@ def fillGraph(N): #generates random-ish graph with nodes 0 to n-1
         G.add_node(i, x = xpos, y = ypos)
         pos[i][0], pos[i][1] = xpos,ypos
         #print(pos)
-    for i in range(N):
+    #Old edge generation - random edges
+    '''for i in range(N):
         if N > 20:
             a = random.randint(1,int(N/20))
             for j in range(a):
@@ -42,7 +43,22 @@ def fillGraph(N): #generates random-ish graph with nodes 0 to n-1
                 b = random.randint(0,N-1)
                 while b is i:
                     b = random.randint(0,N)
-                G.add_edges_from([(b,i)])
+                G.add_edges_from([(b,i)])'''
+    #Tree generation - start from a parent node and have each layer go down?
+    in_maze = np.array([random.randint(0,N-1)])
+    n = random.randint(1,6)
+    for c in range(n):
+        sample = random.randint(0,N-1)
+        while sample in in_maze:
+            sample = random.randint(0,N-1)
+        G.add_edges_from([(in_maze[0], sample)])
+        in_maze = np.append(in_maze[:], sample)
+    while len(in_maze) != N:
+        new = random.randint(0,N-1)
+        while new in in_maze:
+            new = random.randint(0,N-1)
+        G.add_edges_from([(np.random.choice(in_maze),new)])
+        in_maze = np.append(in_maze[:], new)
 
 def onclick(event):
     '''print('%s click: button=%d, x=%d, y=%d, xdata=%f, ydata=%f' %
